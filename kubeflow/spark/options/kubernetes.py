@@ -21,7 +21,6 @@ This follows the same callable pattern as kubeflow.trainer.options for SDK consi
 """
 
 from dataclasses import dataclass
-from typing import Any
 
 from kubeflow_spark_api import models
 
@@ -43,8 +42,16 @@ class Labels:
     Args:
         labels: Dictionary of label key-value pairs.
 
-    Example:
-        options = [Labels({"app": "spark", "team": "data-eng"})]
+    Example::
+
+        options = [
+            Labels(
+                {
+                    "app": "spark",
+                    "team": "data-eng",
+                }
+            ),
+        ]
         spark = client.connect(..., options=options)
     """
 
@@ -86,12 +93,15 @@ class Annotations:
     Args:
         annotations: Dictionary of annotation key-value pairs.
 
-    Example:
+    Example::
+
         options = [
-            Annotations({
-                "description": "Daily ETL pipeline",
-                "owner": "data-team@company.com"
-            })
+            Annotations(
+                {
+                    "description": "Daily ETL pipeline",
+                    "owner": "data-team@company.com",
+                }
+            ),
         ]
         spark = client.connect(..., options=options)
     """
@@ -122,115 +132,6 @@ class Annotations:
 
 
 @dataclass
-class PodTemplateOverride:
-    """Override pod template specifications for Spark Connect driver or executors.
-
-    Provides full control over Kubernetes pod specifications for advanced use cases
-    like custom volumes, init containers, sidecars, or security contexts.
-
-    Supported resources:
-        - Spark Connect
-
-    Supported backends:
-        - Kubernetes
-
-    Note:
-        PodTemplateOverride is currently supported only for Spark Connect.
-        It is not supported for Spark batch jobs submitted with ``submit_job()``.
-
-    Args:
-        role: Target role ("driver" or "executor").
-        template: Pod template specification dict.
-
-    Example:
-        options = [
-            PodTemplateOverride(
-                role="executor",
-                template={
-                    "spec": {
-                        "securityContext": {
-                            "runAsUser": 1000,
-                            "fsGroup": 1000,
-                        }
-                    }
-                },
-            )
-        ]
-        spark = client.connect(..., options=options)
-
-    Warning:
-        Pod template overrides can conflict with SDK-managed settings.
-        Use with caution and test thoroughly.
-    """
-
-    role: str  # "driver" or "executor"
-    template: dict[str, Any]
-
-    def __call__(
-        self,
-        resource: SparkResource,
-        backend: RuntimeBackend,
-    ) -> None:
-        """Apply pod template override to the SparkConnect model.
-
-        Args:
-            resource: Spark resource to modify.
-            backend: Backend instance for validation.
-
-        Raises:
-            ValueError: If backend does not support pod template overrides,
-                the resource is not SparkConnect, or the role is invalid.
-        """
-        from kubeflow.spark.backends.kubernetes.backend import KubernetesBackend
-
-        if not isinstance(backend, KubernetesBackend):
-            raise ValueError(
-                f"PodTemplateOverride option is not compatible with "
-                f"{type(backend).__name__}. Supported backends: KubernetesBackend"
-            )
-
-        if not isinstance(resource, models.SparkV1alpha1SparkConnect):
-            raise ValueError("PodTemplateOverride is currently supported only for SparkConnect.")
-
-        if self.role == "driver":
-            role_spec = resource.spec.server
-        elif self.role == "executor":
-            role_spec = resource.spec.executor
-        else:
-            raise ValueError(f"Invalid role '{self.role}'. Must be 'driver' or 'executor'.")
-
-        # Get or create template
-        if role_spec.template is None:
-            role_spec.template = models.IoK8sApiCoreV1PodTemplateSpec()
-
-        # Convert existing template to dict, merge, and convert back
-        existing_dict = role_spec.template.to_dict() if role_spec.template else {}
-        self._deep_merge(existing_dict, self.template)
-
-        # Ensure spec.containers exists (required by PodSpec validation)
-        if (
-            "spec" in existing_dict
-            and existing_dict["spec"] is not None
-            and (
-                "containers" not in existing_dict["spec"]
-                or existing_dict["spec"]["containers"] is None
-            )
-        ):
-            existing_dict["spec"]["containers"] = []
-
-        role_spec.template = models.IoK8sApiCoreV1PodTemplateSpec.from_dict(existing_dict)
-
-    @staticmethod
-    def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> None:
-        """Deep merge source dict into target dict."""
-        for key, value in source.items():
-            if key in target and isinstance(target[key], dict) and isinstance(value, dict):
-                PodTemplateOverride._deep_merge(target[key], value)
-            else:
-                target[key] = value
-
-
-@dataclass
 class NodeSelector:
     """Add node selector constraints to Spark pods.
 
@@ -243,9 +144,15 @@ class NodeSelector:
     Args:
         selectors: Dictionary of node label key-value pairs.
 
-    Example:
+    Example::
+
         options = [
-            NodeSelector({"node-type": "spark", "gpu": "true"})
+            NodeSelector(
+                {
+                    "node-type": "spark",
+                    "gpu": "true",
+                }
+            ),
         ]
         spark = client.connect(..., options=options)
     """
@@ -322,14 +229,15 @@ class Toleration:
         value: Taint value (if operator is Equal).
         effect: Taint effect (NoSchedule, PreferNoSchedule, or NoExecute).
 
-    Example:
+    Example::
+
         options = [
             Toleration(
                 key="spark-workload",
                 operator="Equal",
                 value="true",
-                effect="NoSchedule"
-            )
+                effect="NoSchedule",
+            ),
         ]
         spark = client.connect(..., options=options)
     """
@@ -422,10 +330,10 @@ class Name:
     Args:
         name: Custom name for the session. Must be a valid Kubernetes resource name.
 
-    Example:
-        ```python
+    Example::
+
         from kubeflow.spark import SparkClient
-        from kubeflow.spark.types.options import Name
+        from kubeflow.spark.options import Name
 
         client = SparkClient()
 
@@ -434,7 +342,6 @@ class Name:
 
         # Auto-generated name
         spark = client.connect()  # Creates "spark-connect-a1b2c3d4"
-        ```
     """
 
     name: str

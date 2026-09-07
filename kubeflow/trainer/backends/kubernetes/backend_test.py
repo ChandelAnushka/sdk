@@ -84,6 +84,11 @@ TRAIN_JOB_WITH_CUSTOM_TRAINER = "train-job-with-custom-trainer"
 # --------------------------
 
 
+def sample_train_func() -> None:
+    """Sample training function."""
+    print("Hello World")
+
+
 @pytest.fixture
 def kubernetes_backend(request):
     """Provide a KubernetesBackend with mocked Kubernetes APIs."""
@@ -290,8 +295,10 @@ def get_custom_trainer(
     # with torchrun as the entrypoint and a fixed lambda for deterministic tests.
     func_script = (
         "\nread -r -d '' SCRIPT << EOM\n\n"
-        'func=lambda: print("Hello World"),\n\n'
-        "<lambda>(**{'learning_rate': 0.001, 'batch_size': 32})\n\n"
+        "def sample_train_func() -> None:\n"
+        '    """Sample training function."""\n'
+        '    print("Hello World")\n\n'
+        "sample_train_func(**{'learning_rate': 0.001, 'batch_size': 32})\n\n"
         'EOM\nprintf "%s" "$SCRIPT" > "backend_test.py"\n'
         'torchrun "backend_test.py"'
     )
@@ -1141,10 +1148,13 @@ def test_get_runtime_packages(kubernetes_backend, test_case):
     """Test KubernetesBackend.get_runtime_packages with basic success path."""
     print("Executing test:", test_case.name)
 
-    try:
-        kubernetes_backend.get_runtime_packages(**test_case.config)
-    except Exception as e:
-        assert type(e) is test_case.expected_error
+    if test_case.expected_status == SUCCESS:
+        # get_runtime_packages runs a TrainJob and streams its logs; it does not
+        # return a value, so a successful call completes without raising.
+        assert kubernetes_backend.get_runtime_packages(**test_case.config) is None
+    else:
+        with pytest.raises(test_case.expected_error):
+            kubernetes_backend.get_runtime_packages(**test_case.config)
 
     if test_case.expected_status == SUCCESS:
         kubernetes_backend.custom_api.delete_namespaced_custom_object.assert_called_once()
@@ -1238,7 +1248,7 @@ def test_get_runtime_packages(kubernetes_backend, test_case):
             expected_status=SUCCESS,
             config={
                 "trainer": types.CustomTrainer(
-                    func=lambda: print("Hello World"),
+                    func=sample_train_func,
                     func_args={"learning_rate": 0.001, "batch_size": 32},
                     packages_to_install=["torch", "numpy"],
                     pip_index_urls=constants.DEFAULT_PIP_INDEX_URLS,
@@ -1259,7 +1269,7 @@ def test_get_runtime_packages(kubernetes_backend, test_case):
             expected_status=SUCCESS,
             config={
                 "trainer": types.CustomTrainer(
-                    func=lambda: print("Hello World"),
+                    func=sample_train_func,
                     func_args={"learning_rate": 0.001, "batch_size": 32},
                     packages_to_install=["torch", "numpy"],
                     pip_index_urls=constants.DEFAULT_PIP_INDEX_URLS,
@@ -1343,7 +1353,7 @@ def test_get_runtime_packages(kubernetes_backend, test_case):
             expected_status=FAILED,
             config={
                 "trainer": types.CustomTrainer(
-                    func=lambda: print("Hello World"),
+                    func=sample_train_func,
                     num_nodes=2,
                 ),
                 "runtime": TORCH_TUNE_RUNTIME,
